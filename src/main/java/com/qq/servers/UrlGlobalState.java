@@ -61,22 +61,54 @@ class UrlGlobalState
 
     final List<UrlInfo> EMPTY_LIST = Lists.newArrayList();
 
+
+    /**
+     * find all similar url, then remove this url from state.
+     *
+     * @param urlInfo
+     * @return
+     */
+    public synchronized List<UrlInfo> getOldUrlToDelete(UrlInfo urlInfo)
+    {
+        reinitializeIfNecessary();
+        if (isExist(urlInfo))
+        {
+            UrlInfo old = state.get(urlInfo.url);
+            state.remove(old.url);
+            List<UrlInfo> result = findSimilarUrl(old);
+            state.remove(old.url);
+            if (LOG.isDebugEnabled())
+            {
+                LOG.debug("Old url " + old.toString() + ", new url " + urlInfo.toString());
+            }
+            return result;
+        }
+        return EMPTY_LIST;
+    }
+
+
     public synchronized List<UrlInfo> findSimilarUrl(UrlInfo info)
     {
 
         reinitializeIfNecessary();
 
-        if (isExist(info))
-        {
-            return EMPTY_LIST;
-        }
+//        if (isExist(info))
+//        {
+//            //first delete url from related urls' similar url set.
+//            //recompute url's
+//            return EMPTY_LIST;
+//        }
 
         List<UrlInfo> result = Lists.newArrayList();
         for (Map.Entry<String, UrlInfo> entry : state.entrySet())
         {
             double computeValue = measure.similarity(info, entry.getValue());
 
-            LOG.debug("#" + computeValue + "#");
+            if (LOG.isDebugEnabled())
+            {
+                LOG.debug("#" + computeValue + "#");
+            }
+
             if (computeValue >= similarity)
             {
                 result.add(entry.getValue());

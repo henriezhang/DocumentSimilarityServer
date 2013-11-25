@@ -27,9 +27,9 @@ public class KeywordSimilarityServerHandler extends SimpleChannelUpstreamHandler
     HttpRequest request;
     private UrlStateHandler handler;
 
-    public KeywordSimilarityServerHandler(UrlGlobalState state)
+    public KeywordSimilarityServerHandler(UrlStateHandler handler)
     {
-        this.handler = new UrlStateHandler(state);
+        this.handler = handler;
     }
 
 
@@ -60,9 +60,12 @@ public class KeywordSimilarityServerHandler extends SimpleChannelUpstreamHandler
             String url = postParameters.get(URL_KEY).get(0);
             String keywords = postParameters.get(KEYWORD_KEY).get(0);
 
-            UrlInfo info = new UrlInfo(url, toMap(keywords));
-            handler.process(info);
-
+            Map<String, Double> value = toMap(keywords);
+            if (value != null)
+            {
+                UrlInfo info = new UrlInfo(url, value);
+                handler.process(info);
+            }
         }
 
         writeEmptyResponse(e);
@@ -134,6 +137,11 @@ public class KeywordSimilarityServerHandler extends SimpleChannelUpstreamHandler
         for (String keyword : keywords)
         {
             String[] keyAndWord = keyword.split(":");
+            if (keyAndWord.length < 2)
+            {
+                LOG.warn("received ill-formatted key " + kwStr);
+                return null;
+            }
             result.put(keyAndWord[0].trim(), Double.valueOf(keyAndWord[1]));
         }
         return result;

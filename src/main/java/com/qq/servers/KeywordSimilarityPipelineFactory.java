@@ -15,11 +15,15 @@ import org.jboss.netty.handler.stream.ChunkedWriteHandler;
 public class KeywordSimilarityPipelineFactory implements ChannelPipelineFactory
 {
 
-    private UrlGlobalState state;
+    private UrlStateHandler handler;
+
     public KeywordSimilarityPipelineFactory(double similarity)
     {
-        this.state = new UrlGlobalState(similarity);
+        UrlGlobalState state = new UrlGlobalState(similarity);
+        RedisClient redisClient = new RedisClient();
+        this.handler = new UrlStateHandler(state, redisClient);
     }
+
     @Override
     public ChannelPipeline getPipeline() throws Exception
     {
@@ -31,7 +35,7 @@ public class KeywordSimilarityPipelineFactory implements ChannelPipelineFactory
         pipeline.addLast("aggregator", new HttpChunkAggregator(10485760));
         pipeline.addLast("encode", new HttpResponseEncoder());
         pipeline.addLast("chunkedwriter", new ChunkedWriteHandler());
-        pipeline.addLast("handler", new KeywordSimilarityServerHandler(state));
+        pipeline.addLast("handler", new KeywordSimilarityServerHandler(handler));
 
         return pipeline;
 

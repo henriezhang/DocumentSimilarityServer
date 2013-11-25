@@ -20,10 +20,10 @@ public class UrlStateHandler
     private RedisClient redisClient;
     private UrlGlobalState state;
 
-    public UrlStateHandler(UrlGlobalState state)
+    public UrlStateHandler(UrlGlobalState state, RedisClient client)
     {
         this.state = state;
-        this.redisClient = new RedisClient();
+        this.redisClient = client;
     }
 
     public void process(UrlInfo info)
@@ -33,6 +33,15 @@ public class UrlStateHandler
         {
             LOG.debug("Receiving URL " + info.toString());
         }
+
+        //first of all, check whether this url exist or not.
+
+        List<UrlInfo> urlToDelete = state.getOldUrlToDelete(info);
+        if (urlToDelete.size() != 0)
+        {
+            redisClient.deleteRelatedUrls(info, urlToDelete);
+        }
+
 
         List<UrlInfo> similarUrls = state.findSimilarUrl(info);
         //passed info has no similarity with other urls
