@@ -28,22 +28,20 @@ public class UrlStateHandler
 
     public void process(UrlInfo info)
     {
-
         if (LOG.isDebugEnabled())
         {
             LOG.debug("Receiving URL " + info.toString());
         }
 
-        //first of all, check whether this url exist or not.
+        UrlGlobalState.Pair<List<UrlInfo>, List<UrlInfo>> urls = state.getUrlToDeleteAndAdd(info);
 
-        List<UrlInfo> urlToDelete = state.getOldUrlToDelete(info);
-        if (urlToDelete.size() != 0)
+        if (urls.getLeft().size() != 0)
         {
-            redisClient.deleteRelatedUrls(info, urlToDelete);
+            redisClient.deleteRelatedUrls(info, urls.getLeft());
         }
 
+        List<UrlInfo> similarUrls = urls.getRight();
 
-        List<UrlInfo> similarUrls = state.findSimilarUrl(info);
         //passed info has no similarity with other urls
         if (similarUrls.size() == 0)
         {

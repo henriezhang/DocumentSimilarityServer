@@ -27,54 +27,60 @@ public class RedisClient
 
 
     private static String URL_PREFIX = "url_";
-    private static String host;
-    private static int port;
-
-    static
-    {
-        Properties props = new Properties();
-        try
-        {
-            props.load(RedisClient.class.getClassLoader().getResourceAsStream("redis-host"));
-        }
-        catch (Exception e)
-        {
-            throw new RuntimeException("can't find redis locations", e);
-        }
-
-        String strValue = (String) props.get("host");
-        if (Strings.isNullOrEmpty(strValue))
-        {
-            throw new RuntimeException("properties host can't find in redis-host configuration file");
-        }
-
-        String[] values = strValue.split(":");
-        host = values[0];
-        port = Integer.parseInt(values[1]);
-        LOG.info("Find redis host " + host + ":" + port);
-    }
-
-//    public static Jedis createRedisInstance()
+//    private static String host;
+//    private static int port;
+//
+//    static
 //    {
-//        return new Jedis(host, port);
+//        Properties props = new Properties();
+//        try
+//        {
+//            props.load(RedisClient.class.getClassLoader().getResourceAsStream("redis-host"));
+//        }
+//        catch (Exception e)
+//        {
+//            throw new RuntimeException("can't find redis locations", e);
+//        }
+//
+//        String strValue = (String) props.get("host");
+//        if (Strings.isNullOrEmpty(strValue))
+//        {
+//            throw new RuntimeException("properties host can't find in redis-host configuration file");
+//        }
+//
+//        String[] values = strValue.split(":");
+//        host = values[0];
+//        port = Integer.parseInt(values[1]);
+//        LOG.info("Find redis host " + host + ":" + port);
 //    }
 
 
     private static final String REDIS_FIELD_NAME = "lk";
 
+    private RedisLocator locator;
     private JedisPool jedisPool;
 //    private Pipeline redisPipeline;
 
-    public RedisClient()
+    public RedisClient(String name)
+    {
+        locator = new RedisLocator(name);
+        initRedis();
+    }
+
+    private void initRedis()
     {
         JedisPoolConfig conf = new JedisPoolConfig();
         conf.setMaxActive(Integer.MAX_VALUE);
-
-        jedisPool = new JedisPool(conf, host, port);
+        RedisLocator.RedisLocation location = locator.getRedisLocation();
+        jedisPool = new JedisPool(conf, location.getIp(), location.getPort());
     }
+
 
     public void deleteRelatedUrls(UrlInfo urlInfo, List<UrlInfo> urlsToDelete)
     {
+
+        LOG.info("Update existing url " + urlInfo.url + ", first delete existing url from similar url");
+
         Jedis client = null;
         try
         {
@@ -113,8 +119,14 @@ public class RedisClient
             {
                 jedisPool.returnBrokenResource(client);
                 client = null;
-                LOG.warn("Catch Unexpected exception" + e.toString());
+                LOG.warn("Catch Unexpected exception when deleting from redis" + e.toString());
             }
+
+            //currently ,there is no way to differ between exception from connection or exception from server,so it's safe bet
+            //to re-initialize jedis pool
+            jedisPool.destroy();
+            client = null;
+            initRedis();
         }
         finally
         {
@@ -169,12 +181,19 @@ public class RedisClient
         }
         catch (Exception e)
         {
+            //TODO duplicate code,refactor the code.
             if (client != null)
             {
                 jedisPool.returnBrokenResource(client);
                 client = null;
                 LOG.warn("Catch Unexpected exception" + e.toString());
             }
+
+            //currently ,there is no way to differ between exception from connection or exception from server,so it's safe bet
+            //to re-initialize jedis pool
+            jedisPool.destroy();
+            client = null;
+            initRedis();
         }
         finally
         {

@@ -5,9 +5,7 @@ import com.google.common.collect.Maps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Calendar;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -19,19 +17,17 @@ import java.util.concurrent.ConcurrentHashMap;
 class UrlGlobalState
 {
     private static Logger LOG = LoggerFactory.getLogger(UrlGlobalState.class);
+    private static final int MAX_COUNT = 15;
+
     private Map<String, UrlInfo> state;
     private CosineDistanceMeasure measure;
     private double similarity;
     private int today;
-    private Calendar calendar;
-
 
     public UrlGlobalState(double similarity)
     {
         this.similarity = similarity;
-        this.state = new ConcurrentHashMap<String, UrlInfo>();
         this.measure = new CosineDistanceMeasure();
-        this.calendar = Calendar.getInstance();
         reinitializeIfNecessary();
     }
 
@@ -47,13 +43,16 @@ class UrlGlobalState
         }
     }
 
+
     private int getCurrentDay()
     {
+        //TODO new calendar instance is very heavy, re-implement it
+        Calendar calendar = Calendar.getInstance();
         return calendar.get(Calendar.DAY_OF_MONTH);
     }
 
 
-    public boolean isExist(UrlInfo urlInfo)
+    private boolean isExist(UrlInfo urlInfo)
     {
         return state.get(urlInfo.url) != null;
     }
@@ -62,21 +61,23 @@ class UrlGlobalState
     final List<UrlInfo> EMPTY_LIST = Lists.newArrayList();
 
 
-    /**
-     * find all similar url, then remove this url from state.
-     *
-     * @param urlInfo
-     * @return
-     */
-    public synchronized List<UrlInfo> getOldUrlToDelete(UrlInfo urlInfo)
+    public synchronized Pair<List<UrlInfo>, List<UrlInfo>> getUrlToDeleteAndAdd(UrlInfo urlInfo)
     {
         reinitializeIfNecessary();
+        List<UrlInfo> toDelete = getOldUrlToDelete(urlInfo);
+        List<UrlInfo> toAdd = findSimilarUrl(urlInfo, MAX_COUNT);
+        state.put(urlInfo.url, urlInfo);
+        return new Pair<List<UrlInfo>, List<UrlInfo>>(toDelete, toAdd);
+    }
+
+
+    private List<UrlInfo> getOldUrlToDelete(UrlInfo urlInfo)
+    {
         if (isExist(urlInfo))
         {
             UrlInfo old = state.get(urlInfo.url);
             state.remove(old.url);
-            List<UrlInfo> result = findSimilarUrl(old);
-            state.remove(old.url);
+            List<UrlInfo> result = findSimilarUrl(old, Integer.MAX_VALUE);
             if (LOG.isDebugEnabled())
             {
                 LOG.debug("Old url " + old.toString() + ", new url " + urlInfo.toString());
@@ -87,37 +88,58 @@ class UrlGlobalState
     }
 
 
-    public synchronized List<UrlInfo> findSimilarUrl(UrlInfo info)
+    private List<UrlInfo> findSimilarUrl(UrlInfo info, int maxCount)
     {
-
-        reinitializeIfNecessary();
-
-//        if (isExist(info))
-//        {
-//            //first delete url from related urls' similar url set.
-//            //recompute url's
-//            return EMPTY_LIST;
-//        }
+        TreeMap<Double, UrlInfo> similarUrls = new TreeMap<Double, UrlInfo>();
 
         List<UrlInfo> result = Lists.newArrayList();
         for (Map.Entry<String, UrlInfo> entry : state.entrySet())
         {
             double computeValue = measure.similarity(info, entry.getValue());
-
             if (LOG.isDebugEnabled())
             {
-                LOG.debug("#" + computeValue + "#");
+                LOG.debug("# Similarity between " + info.toString() + " and " + entry.getValue().toString() + " is " + computeValue + "#");
             }
 
             if (computeValue >= similarity)
             {
-                result.add(entry.getValue());
+                //to order in descending
+                similarUrls.put(-computeValue, entry.getValue());
             }
         }
 
-        //keep this new comming url
-        state.put(info.url, info);
+        int total = similarUrls.size() < maxCount ? similarUrls.size() : maxCount;
+        int count = 0;
+        for (Map.Entry<Double, UrlInfo> entry : similarUrls.entrySet())
+        {
+            if (count++ >= total)
+                break;
+            result.add(entry.getValue());
+        }
         return result;
+    }
+
+
+    public static class Pair<K, V>
+    {
+        private K left;
+        private V right;
+
+        public Pair(K left, V right)
+        {
+            this.left = left;
+            this.right = right;
+        }
+
+        public K getLeft()
+        {
+            return left;
+        }
+
+        public V getRight()
+        {
+            return right;
+        }
     }
 
 }

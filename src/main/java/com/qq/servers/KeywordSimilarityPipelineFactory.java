@@ -20,7 +20,7 @@ public class KeywordSimilarityPipelineFactory implements ChannelPipelineFactory
     public KeywordSimilarityPipelineFactory(double similarity)
     {
         UrlGlobalState state = new UrlGlobalState(similarity);
-        RedisClient redisClient = new RedisClient();
+        RedisClient redisClient = new RedisClient("sz.tubdbasenews.redis.com");
         this.handler = new UrlStateHandler(state, redisClient);
     }
 
