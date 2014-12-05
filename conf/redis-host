@@ -1,2 +1,4 @@
 #redis host and port
+#sz.tubdbasenews.redis.com
+
 host=10.133.40.215:9035

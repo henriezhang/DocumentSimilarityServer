@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Created with IntelliJ IDEA.
@@ -33,14 +34,14 @@ public class UrlStateHandler
             LOG.debug("Receiving URL " + info.toString());
         }
 
-        UrlGlobalState.Pair<List<UrlInfo>, List<UrlInfo>> urls = state.getUrlToDeleteAndAdd(info);
+        UrlGlobalState.Pair<Set<UrlInfo>, Set<UrlInfo>> urls = state.getUrlToDeleteAndAdd(info);
 
         if (urls.getLeft().size() != 0)
         {
-            redisClient.deleteRelatedUrls(info, urls.getLeft());
+            redisClient.deleteFromRelatedUrls(info, urls.getLeft());
         }
 
-        List<UrlInfo> similarUrls = urls.getRight();
+        Set<UrlInfo> similarUrls = urls.getRight();
 
         //passed info has no similarity with other urls
         if (similarUrls.size() == 0)

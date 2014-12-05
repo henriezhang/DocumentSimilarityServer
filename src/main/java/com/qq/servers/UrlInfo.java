@@ -1,6 +1,7 @@
 package com.qq.servers;
 
 import com.google.common.base.Objects;
+import com.google.common.hash.Hasher;
 
 import java.util.Map;
 
@@ -24,6 +25,27 @@ public class UrlInfo
     public Map<String, Double> getKeyWord()
     {
         return this.keywords;
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return url.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object other)
+    {
+        if (this == other)
+            return true;
+        if (other == null)
+            return false;
+        if (other instanceof UrlInfo)
+        {
+            UrlInfo otherInfo = (UrlInfo) other;
+            return this.url.equals(otherInfo.url);
+        }
+        return false;
     }
 
     public String toString()

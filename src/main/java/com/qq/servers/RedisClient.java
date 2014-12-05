@@ -5,14 +5,15 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
 import com.google.common.collect.Iterables;
+import com.google.common.collect.Sets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
-import java.util.List;
-import java.util.Properties;
+import java.util.Collection;
+import java.util.Set;
 
 /**
  * Created with IntelliJ IDEA.
@@ -25,41 +26,12 @@ public class RedisClient
 
     private static Logger LOG = LoggerFactory.getLogger(RedisClient.class);
 
-
-    private static String URL_PREFIX = "url_";
-//    private static String host;
-//    private static int port;
-//
-//    static
-//    {
-//        Properties props = new Properties();
-//        try
-//        {
-//            props.load(RedisClient.class.getClassLoader().getResourceAsStream("redis-host"));
-//        }
-//        catch (Exception e)
-//        {
-//            throw new RuntimeException("can't find redis locations", e);
-//        }
-//
-//        String strValue = (String) props.get("host");
-//        if (Strings.isNullOrEmpty(strValue))
-//        {
-//            throw new RuntimeException("properties host can't find in redis-host configuration file");
-//        }
-//
-//        String[] values = strValue.split(":");
-//        host = values[0];
-//        port = Integer.parseInt(values[1]);
-//        LOG.info("Find redis host " + host + ":" + port);
-//    }
-
-
+    private static final String URL_PREFIX = "url_";
     private static final String REDIS_FIELD_NAME = "lk";
 
+    //fields
     private RedisLocator locator;
     private JedisPool jedisPool;
-//    private Pipeline redisPipeline;
 
     public RedisClient(String name)
     {
@@ -75,43 +47,26 @@ public class RedisClient
         jedisPool = new JedisPool(conf, location.getIp(), location.getPort());
     }
 
+    Splitter splitter = Splitter.on(",");
+    Joiner joiner = Joiner.on(",");
 
-    public void deleteRelatedUrls(UrlInfo urlInfo, List<UrlInfo> urlsToDelete)
+    public void deleteFromRelatedUrls(UrlInfo toDeleteUrl, Collection<UrlInfo> srcUrls)
     {
-
-        LOG.info("Update existing url " + urlInfo.url + ", first delete existing url from similar url");
-
+        LOG.info("Update existing url " + toDeleteUrl.url + ",  delete existing url from similar url");
         Jedis client = null;
         try
         {
+            //TODO consider using redis pipeline
             client = jedisPool.getResource();
-            for (UrlInfo delete : urlsToDelete)
+            for (UrlInfo delete : srcUrls)
             {
                 String key = appendPrefix(delete.url);
-                String urls = client.hget(key, REDIS_FIELD_NAME);
-                Iterable<String> iterable = Splitter.on(",").split(urls);
-                StringBuilder sb = new StringBuilder();
-                for (String url : iterable)
-                {
-                    //exclude it from final result.
-                    if (url.equals(urlInfo.url))
-                    {
-                        continue;
-                    }
-
-                    sb.append(url);
-                    sb.append(",");
-                }
-
-                if (sb.length() > 1)
-                {
-                    sb.setLength(sb.length() - 1);
-                }
-
-                client.hset(key, REDIS_FIELD_NAME, sb.toString());
+                String strUrl = client.hget(key, REDIS_FIELD_NAME);
+                Set<String> urls = getUrlList(strUrl);
+                urls.remove(toDeleteUrl);
+                String newValue = joiner.join(urls);
+                client.hset(key, REDIS_FIELD_NAME, newValue);
             }
-
-
         }
         catch (Exception e)
         {
@@ -137,8 +92,18 @@ public class RedisClient
         }
     }
 
+    private Set<String> getUrlList(String strUrl)
+    {
+        Set<String> urls = Sets.newHashSet();
+        Iterable<String> iterate = splitter.split(strUrl);
+        for (String url : iterate)
+        {
+            urls.add(url);
+        }
+        return urls;
+    }
 
-    public void updateRedis(UrlInfo urlInfo, List<UrlInfo> similarUrls)
+    public void updateRedis(UrlInfo urlInfo, Collection<UrlInfo> similarUrls)
     {
 
         Jedis client = null;
@@ -147,7 +112,7 @@ public class RedisClient
             client = jedisPool.getResource();
 
             //1. update redis for passed in urlInfo
-            String value = composeNewValue(similarUrls);
+            String value = joinUrls(similarUrls);
             client.hset(appendPrefix(urlInfo.url), REDIS_FIELD_NAME, value);
 
             if (LOG.isDebugEnabled())
@@ -155,22 +120,13 @@ public class RedisClient
                 LOG.debug("Write URl info to redis : url = " + urlInfo.toString() + "; value = " + value);
             }
 
-
             //2. update related urlInfos.
-//            boolean usePipeLine = similarUrls.size() > 5;
             for (UrlInfo info : similarUrls)
             {
-                String oldValue = client.hget(appendPrefix(info.url), REDIS_FIELD_NAME);
-                String updatedValue;
-                if (Strings.isNullOrEmpty(oldValue))
-                {
-                    updatedValue = urlInfo.url;
-                }
-                else
-                {
-                    updatedValue = Joiner.on(",").join(oldValue, urlInfo.url);
-                }
-                client.hset(appendPrefix(info.url), REDIS_FIELD_NAME, updatedValue);
+                String key = appendPrefix(info.url);
+                String oldValue = client.hget(key, REDIS_FIELD_NAME);
+                String updatedValue = getUpdatedValue(urlInfo, oldValue);
+                client.hset(key, REDIS_FIELD_NAME, updatedValue);
                 if (LOG.isDebugEnabled())
                 {
                     LOG.debug("Write " + urlInfo.toString() + " related similar URl info to redis : url = " +
@@ -204,12 +160,26 @@ public class RedisClient
         }
     }
 
+    private String getUpdatedValue(UrlInfo urlInfo, String oldValue)
+    {
+        String updatedValue;
+        if (Strings.isNullOrEmpty(oldValue))
+        {
+            updatedValue = urlInfo.url;
+        }
+        else
+        {
+            updatedValue = joiner.join(oldValue, urlInfo.url);
+        }
+        return updatedValue;
+    }
+
     private String appendPrefix(String url)
     {
         return URL_PREFIX + url;
     }
 
-    private String composeNewValue(List<UrlInfo> similarUrls)
+    private String joinUrls(Collection<UrlInfo> similarUrls)
     {
         Iterable<String> iterable = Iterables.transform(similarUrls, new Function<UrlInfo, String>()
         {
@@ -219,7 +189,7 @@ public class RedisClient
                 return input.url;
             }
         });
-        return Joiner.on(",").join(iterable);
+        return joiner.join(iterable);
     }
 
 

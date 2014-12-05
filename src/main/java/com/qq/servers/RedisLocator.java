@@ -7,7 +7,6 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.io.Serializable;
 
 /**
  * Created with IntelliJ IDEA.
@@ -59,20 +58,28 @@ public class RedisLocator
             BufferedReader br = new BufferedReader(new InputStreamReader(in));
             String s;
             RedisLocation location = null;
-            while ((s = br.readLine()) != null)
+            try
             {
-                String[] fields = s.split("\\t");
-                if (fields.length == 2)
+                while ((s = br.readLine()) != null)
                 {
-                    location = new RedisLocation(fields[0], Integer.parseInt(fields[1]));
-                    break;
+                    String[] fields = s.split("\\t");
+                    if (fields.length == 2)
+                    {
+                        location = new RedisLocation(fields[0], Integer.parseInt(fields[1]));
+                        break;
+                    }
                 }
+                if (location == null)
+                {
+                    throw new RuntimeException("Can't get ips for name " + name);
+                }
+                return location;
             }
-            if (location == null)
+            finally
             {
-                throw new RuntimeException("Can't get ips for name " + name);
+                br.close();
             }
-            return location;
+
         }
         catch (Exception e)
         {
